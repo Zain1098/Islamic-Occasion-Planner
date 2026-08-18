@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../features/dashboard/presentation/dashboard_screen.dart';
+import '../features/calendar/presentation/calendar_screen.dart';
 import '../features/events/presentation/events_screen.dart';
 import 'theme/app_theme.dart';
 
@@ -62,6 +63,7 @@ class _AppShellState extends State<AppShell> {
       body: SafeArea(
         child: switch (_selectedIndex) {
           0 => DashboardScreen(onViewPlans: () => _selectDestination(2)),
+          1 => const CalendarScreen(),
           2 => const EventsScreen(),
           _ => _ShellPage(title: destination.label),
         },
