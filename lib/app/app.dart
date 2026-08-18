@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/providers/repository_providers.dart';
+import '../core/services/notification_service.dart';
 import '../features/dashboard/presentation/dashboard_screen.dart';
 import '../features/calendar/presentation/calendar_screen.dart';
 import '../features/events/presentation/events_screen.dart';
@@ -21,15 +23,38 @@ class IslamicOccasionPlannerApp extends ConsumerWidget {
   }
 }
 
-class AppShell extends StatefulWidget {
+class AppShell extends ConsumerStatefulWidget {
   const AppShell({super.key});
 
   @override
-  State<AppShell> createState() => _AppShellState();
+  ConsumerState<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends State<AppShell> {
+class _AppShellState extends ConsumerState<AppShell> {
   int _selectedIndex = 0;
+  late final VoidCallback _notificationListener;
+  late final NotificationService _notifications;
+
+  @override
+  void initState() {
+    super.initState();
+    _notifications = ref.read(notificationServiceProvider);
+    _notificationListener = () {
+      if (_notifications.tappedEventId.value != null && mounted) {
+        _selectDestination(2);
+      }
+    };
+    _notifications.tappedEventId.addListener(_notificationListener);
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _notificationListener(),
+    );
+  }
+
+  @override
+  void dispose() {
+    _notifications.tappedEventId.removeListener(_notificationListener);
+    super.dispose();
+  }
 
   static const _destinations = <_Destination>[
     _Destination(

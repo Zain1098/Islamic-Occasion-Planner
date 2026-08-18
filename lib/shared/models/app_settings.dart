@@ -13,6 +13,18 @@ class AppSettings {
   final bool notificationsEnabled;
   final AppThemePreference themeMode;
 
+  AppSettings copyWith({
+    int? hijriAdjustmentDays,
+    String? currencyCode,
+    bool? notificationsEnabled,
+    AppThemePreference? themeMode,
+  }) => AppSettings(
+    hijriAdjustmentDays: hijriAdjustmentDays ?? this.hijriAdjustmentDays,
+    currencyCode: currencyCode ?? this.currencyCode,
+    notificationsEnabled: notificationsEnabled ?? this.notificationsEnabled,
+    themeMode: themeMode ?? this.themeMode,
+  );
+
   Map<String, Object?> toMap() => {
     'hijriAdjustmentDays': hijriAdjustmentDays,
     'currencyCode': currencyCode,

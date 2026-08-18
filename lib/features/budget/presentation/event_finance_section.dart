@@ -263,6 +263,7 @@ class EventFinanceSection extends ConsumerWidget {
   void _refresh(WidgetRef ref) {
     ref.invalidate(eventPlanProvider(eventId));
     ref.invalidate(dashboardProvider);
+    ref.read(reminderCoordinatorProvider).rescheduleByEventId(eventId);
   }
 }
 

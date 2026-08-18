@@ -18,6 +18,14 @@ class HiveEventRepository implements EventRepository {
       .toList(growable: false);
 
   @override
+  Future<IslamicEvent?> getById(String eventId) async {
+    final value = _storage.events.get(eventId);
+    return value == null
+        ? null
+        : IslamicEvent.fromMap(jsonDecode(value) as Map<String, dynamic>);
+  }
+
+  @override
   Future<void> save(IslamicEvent event) =>
       _storage.events.put(event.id, jsonEncode(event.toMap()));
 

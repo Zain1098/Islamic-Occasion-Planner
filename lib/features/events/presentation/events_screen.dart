@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/providers/repository_providers.dart';
 import '../../../core/utils/identifier_generator.dart';
 import '../../budget/presentation/event_finance_section.dart';
+import '../../reminders/presentation/reminder_section.dart';
 import '../../../shared/models/islamic_event.dart';
 import '../data/hive_event_repository.dart';
 import 'events_provider.dart';
@@ -136,6 +137,8 @@ class EventDetailScreen extends ConsumerWidget {
           ],
           const SizedBox(height: 28),
           EventFinanceSection(eventId: event.id),
+          const SizedBox(height: 24),
+          ReminderSection(event: event),
           const SizedBox(height: 32),
           FilledButton.icon(
             onPressed: () => _edit(context, ref),
@@ -159,6 +162,7 @@ class EventDetailScreen extends ConsumerWidget {
     await ref
         .read(eventRepositoryProvider)
         .save(_copyEvent(event, enabled: !event.enabled, updatedAt: now));
+    await ref.read(reminderCoordinatorProvider).rescheduleByEventId(event.id);
     if (context.mounted) Navigator.of(context).pop(true);
   }
 
@@ -183,6 +187,7 @@ class EventDetailScreen extends ConsumerWidget {
       ),
     );
     if (confirmed != true) return;
+    await ref.read(reminderCoordinatorProvider).cancelEvent(event.id);
     await ref.read(budgetRepositoryProvider).deleteForEvent(event.id);
     await ref.read(savingRepositoryProvider).deleteForEvent(event.id);
     await ref.read(reminderPreferenceRepositoryProvider).delete(event.id);
@@ -361,6 +366,7 @@ class _EventEditorScreenState extends ConsumerState<EventEditorScreen> {
       updatedAt: now,
     );
     await ref.read(eventRepositoryProvider).save(event);
+    await ref.read(reminderCoordinatorProvider).rescheduleEvent(event);
     if (mounted) Navigator.of(context).pop(true);
   }
 }

@@ -12,11 +12,16 @@ import '../../features/settings/data/hive_settings_repository.dart';
 import '../../features/settings/data/settings_repository.dart';
 import '../storage/hive_app_storage.dart';
 import '../services/date_service.dart';
+import '../services/notification_service.dart';
+import '../services/reminder_coordinator.dart';
 
 final appStorageProvider = Provider<HiveAppStorage>(
   (ref) => throw UnimplementedError(),
 );
 final dateServiceProvider = Provider<DateService>((ref) => DateService());
+final notificationServiceProvider = Provider<NotificationService>(
+  (ref) => NotificationService(),
+);
 final eventRepositoryProvider = Provider<EventRepository>(
   (ref) => HiveEventRepository(ref.watch(appStorageProvider)),
 );
@@ -32,4 +37,15 @@ final reminderPreferenceRepositoryProvider =
     );
 final settingsRepositoryProvider = Provider<SettingsRepository>(
   (ref) => HiveSettingsRepository(ref.watch(appStorageProvider)),
+);
+final reminderCoordinatorProvider = Provider<ReminderCoordinator>(
+  (ref) => ReminderCoordinator(
+    events: ref.watch(eventRepositoryProvider),
+    budgets: ref.watch(budgetRepositoryProvider),
+    savings: ref.watch(savingRepositoryProvider),
+    preferences: ref.watch(reminderPreferenceRepositoryProvider),
+    settings: ref.watch(settingsRepositoryProvider),
+    dates: ref.watch(dateServiceProvider),
+    notifications: ref.watch(notificationServiceProvider),
+  ),
 );
