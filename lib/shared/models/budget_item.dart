@@ -5,7 +5,7 @@ class BudgetItem {
     required this.category,
     required this.plannedAmount,
     this.actualAmount,
-  });
+  }) : assert(plannedAmount >= 0);
 
   final String id;
   final String eventId;

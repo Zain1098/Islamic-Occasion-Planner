@@ -8,7 +8,7 @@ class SavingEntry {
     required this.entryType,
     required this.createdAt,
     this.note,
-  });
+  }) : assert(amount > 0);
 
   final String id;
   final String eventId;

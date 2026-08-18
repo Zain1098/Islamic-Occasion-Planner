@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/providers/repository_providers.dart';
 import '../../../core/utils/identifier_generator.dart';
+import '../../budget/presentation/event_finance_section.dart';
 import '../../../shared/models/islamic_event.dart';
 import '../data/hive_event_repository.dart';
 import 'events_provider.dart';
@@ -133,6 +134,8 @@ class EventDetailScreen extends ConsumerWidget {
             const SizedBox(height: 6),
             Text(notes),
           ],
+          const SizedBox(height: 28),
+          EventFinanceSection(eventId: event.id),
           const SizedBox(height: 32),
           FilledButton.icon(
             onPressed: () => _edit(context, ref),
