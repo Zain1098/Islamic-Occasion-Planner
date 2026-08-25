@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/providers/repository_providers.dart';
 import '../../../core/services/date_service.dart';
+import '../../../shared/widgets/app_state_view.dart';
 import '../domain/dashboard_data.dart';
 import 'dashboard_provider.dart';
 
@@ -14,10 +18,17 @@ class DashboardScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final dashboard = ref.watch(dashboardProvider);
     return dashboard.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, stackTrace) =>
-          _DashboardError(onRetry: () => ref.invalidate(dashboardProvider)),
-      data: (data) => _DashboardContent(data: data, onViewPlans: onViewPlans),
+      loading: () => const AppLoadingView(label: 'Loading dashboard'),
+      error: (error, stackTrace) => AppErrorView(
+        message: 'Your dashboard could not be loaded.',
+        onRetry: () => ref.invalidate(dashboardProvider),
+      ),
+      data: (data) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          unawaited(ref.read(homeWidgetServiceProvider).update(data));
+        });
+        return _DashboardContent(data: data, onViewPlans: onViewPlans);
+      },
     );
   }
 }
@@ -305,29 +316,6 @@ class _NoUpcomingEvents extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           TextButton(onPressed: onViewPlans, child: const Text('View plans')),
-        ],
-      ),
-    ),
-  );
-}
-
-class _DashboardError extends StatelessWidget {
-  const _DashboardError({required this.onRetry});
-
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) => Center(
-    child: Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.error_outline, size: 40),
-          const SizedBox(height: 12),
-          const Text('Your dashboard could not be loaded.'),
-          const SizedBox(height: 8),
-          TextButton(onPressed: onRetry, child: const Text('Try again')),
         ],
       ),
     ),

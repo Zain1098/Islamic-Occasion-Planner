@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../events/presentation/events_screen.dart';
+import '../../../shared/widgets/app_state_view.dart';
 import '../domain/calendar_data.dart';
 import 'calendar_provider.dart';
 
@@ -37,12 +38,10 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Calendar')),
       body: calendar.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stackTrace) => Center(
-          child: TextButton(
-            onPressed: () => ref.invalidate(calendarProvider(_month)),
-            child: const Text('Try again'),
-          ),
+        loading: () => const AppLoadingView(label: 'Loading calendar'),
+        error: (error, stackTrace) => AppErrorView(
+          message: 'The calendar could not be loaded.',
+          onRetry: () => ref.invalidate(calendarProvider(_month)),
         ),
         data: (data) => _CalendarContent(
           data: data,

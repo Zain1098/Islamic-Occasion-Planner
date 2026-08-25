@@ -1,17 +1,29 @@
-# islamic_occasion_planner
+# Islamic Occasion Planner
 
-A new Flutter project.
+An offline-first Flutter Android planner for important Islamic occasions. It combines Hijri and Gregorian dates, local reminders, event budgets, saving targets, a yearly planning view, and local JSON backup/restore.
 
-## Getting Started
+## Privacy-first V1
 
-This project is a starting point for a Flutter application.
+- No account or cloud backend
+- No analytics, ads, or Internet permission
+- Planner data stays on the device
+- Backup export and import happen only when the user selects them
+- Hijri dates support a global -1/0/+1-day adjustment and per-occasion manual overrides
 
-A few resources to get you started if this is your first Flutter project:
+## Run locally
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+```powershell
+flutter pub get
+flutter run
+```
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Quality checks
+
+```powershell
+flutter analyze
+flutter test
+```
+
+## Android release
+
+Release builds require a private Android upload keystore. Copy `android/key.properties.example` to `android/key.properties`, set the local keystore values, and follow the detailed [Play Store release checklist](doc/PLAY_STORE_RELEASE.md).

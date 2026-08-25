@@ -6,6 +6,7 @@ import '../../../core/utils/identifier_generator.dart';
 import '../../budget/presentation/event_finance_section.dart';
 import '../../reminders/presentation/reminder_section.dart';
 import '../../../shared/models/islamic_event.dart';
+import '../../../shared/widgets/app_state_view.dart';
 import '../data/hive_event_repository.dart';
 import 'events_provider.dart';
 
@@ -23,12 +24,10 @@ class EventsScreen extends ConsumerWidget {
         label: const Text('Add occasion'),
       ),
       body: events.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stackTrace) => Center(
-          child: TextButton(
-            onPressed: () => ref.invalidate(eventsProvider),
-            child: const Text('Try again'),
-          ),
+        loading: () => const AppLoadingView(label: 'Loading occasion plans'),
+        error: (error, stackTrace) => AppErrorView(
+          message: 'Occasion plans could not be loaded.',
+          onRetry: () => ref.invalidate(eventsProvider),
         ),
         data: (items) => items.isEmpty
             ? const Center(
