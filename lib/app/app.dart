@@ -51,7 +51,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     _notifications = ref.read(notificationServiceProvider);
     _notificationListener = () {
       if (_notifications.tappedEventId.value != null && mounted) {
-        _selectDestination(2);
+        _handleNotificationTap();
       }
     };
     _notifications.tappedEventId.addListener(_notificationListener);
@@ -60,13 +60,34 @@ class _AppShellState extends ConsumerState<AppShell> {
     });
     WidgetsBinding.instance.addPostFrameCallback(
       (_) async {
-        _notificationListener();
+        try {
+          final coordinator = ref.read(reminderCoordinatorProvider);
+          unawaited(coordinator.rescheduleAll());
+        } catch (_) {}
+        await _handleNotificationTap();
         if (await HomeWidget.initiallyLaunchedFromHomeWidget() != null &&
             mounted) {
           _selectDestination(2);
         }
       },
     );
+  }
+
+  Future<void> _handleNotificationTap() async {
+    try {
+      final eventId = _notifications.tappedEventId.value;
+      if (eventId == null || !mounted) return;
+      _notifications.tappedEventId.value = null;
+      _selectDestination(2);
+      final event = await ref.read(eventRepositoryProvider).getById(eventId);
+      if (event != null && mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => EventDetailScreen(event: event),
+          ),
+        );
+      }
+    } catch (_) {}
   }
 
   @override

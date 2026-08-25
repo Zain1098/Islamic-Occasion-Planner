@@ -9,6 +9,9 @@ import '../../../shared/widgets/app_state_view.dart';
 import '../domain/dashboard_data.dart';
 import 'dashboard_provider.dart';
 
+import '../../../core/utils/currency_formatter.dart';
+import '../../savings/presentation/add_saving_dialog.dart';
+
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key, required this.onViewPlans});
 
@@ -17,6 +20,9 @@ class DashboardScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final dashboard = ref.watch(dashboardProvider);
+    final settings = ref.watch(appSettingsProvider).value;
+    final currencyCode = settings?.currencyCode ?? 'PKR';
+
     return dashboard.when(
       loading: () => const AppLoadingView(label: 'Loading dashboard'),
       error: (error, stackTrace) => AppErrorView(
@@ -27,20 +33,29 @@ class DashboardScreen extends ConsumerWidget {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           unawaited(ref.read(homeWidgetServiceProvider).update(data));
         });
-        return _DashboardContent(data: data, onViewPlans: onViewPlans);
+        return _DashboardContent(
+          data: data,
+          onViewPlans: onViewPlans,
+          currencyCode: currencyCode,
+        );
       },
     );
   }
 }
 
-class _DashboardContent extends StatelessWidget {
-  const _DashboardContent({required this.data, required this.onViewPlans});
+class _DashboardContent extends ConsumerWidget {
+  const _DashboardContent({
+    required this.data,
+    required this.onViewPlans,
+    required this.currencyCode,
+  });
 
   final DashboardData data;
   final VoidCallback onViewPlans;
+  final String currencyCode;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     return CustomScrollView(
       slivers: [
@@ -63,7 +78,11 @@ class _DashboardContent extends StatelessWidget {
               ),
               const SizedBox(height: 24),
               if (data.nextEvent case final nextEvent?) ...[
-                _NextEventCard(summary: nextEvent, onViewPlans: onViewPlans),
+                _NextEventCard(
+                  summary: nextEvent,
+                  onViewPlans: onViewPlans,
+                  currencyCode: currencyCode,
+                ),
                 const SizedBox(height: 28),
                 _SectionHeader(
                   title: 'Upcoming occasions',
@@ -76,11 +95,18 @@ class _DashboardContent extends StatelessWidget {
                     .map(
                       (summary) => Padding(
                         padding: const EdgeInsets.only(bottom: 12),
-                        child: _UpcomingEventCard(summary: summary),
+                        child: _UpcomingEventCard(
+                          summary: summary,
+                          currencyCode: currencyCode,
+                        ),
                       ),
                     ),
                 const SizedBox(height: 12),
-                _YearlySummary(totalPlannedAmount: data.totalPlannedAmount),
+                _YearlySummary(
+                  totalPlannedAmount: data.totalPlannedAmount,
+                  monthlyAmountNeeded: data.monthlyAmountNeeded,
+                  currencyCode: currencyCode,
+                ),
               ] else
                 _NoUpcomingEvents(onViewPlans: onViewPlans),
             ],
@@ -91,18 +117,30 @@ class _DashboardContent extends StatelessWidget {
   }
 }
 
-class _NextEventCard extends StatelessWidget {
-  const _NextEventCard({required this.summary, required this.onViewPlans});
+class _NextEventCard extends ConsumerWidget {
+  const _NextEventCard({
+    required this.summary,
+    required this.onViewPlans,
+    required this.currencyCode,
+  });
 
   final DashboardEventSummary summary;
   final VoidCallback onViewPlans;
+  final String currencyCode;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     const foreground = Color(0xFFFFF9F0);
-    final targetText = summary.targetAmount == 0
-        ? 'Set a budget to start planning.'
-        : 'Rs ${_formatAmount(summary.remainingAmount)} remains';
+    final isBudgeted = summary.targetAmount > 0;
+    final savedText = formatCurrency(summary.savedAmount, currencyCode);
+    final targetText = formatCurrency(summary.targetAmount, currencyCode);
+    final remainingText = formatCurrency(summary.remainingAmount, currencyCode);
+    final dailyRateText = formatCurrency(summary.dailySavingRequired, currencyCode);
+
+    final statusText = isBudgeted
+        ? '$savedText saved of $targetText ($remainingText left)'
+        : 'Set a budget to start planning.';
+
     return Semantics(
       label:
           'Next occasion: ${summary.event.title}, ${summary.daysRemaining} days remaining',
@@ -171,18 +209,49 @@ class _NextEventCard extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             Text(
-              targetText,
+              statusText,
               style: Theme.of(
                 context,
               ).textTheme.bodyMedium?.copyWith(color: foreground),
             ),
+            if (isBudgeted && summary.dailySavingRequired > 0) ...[
+              const SizedBox(height: 4),
+              Text(
+                '$dailyRateText / day required',
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: const Color(0xFFE7C878),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
-            TextButton.icon(
-              onPressed: onViewPlans,
-              icon: const Icon(Icons.arrow_forward),
-              iconAlignment: IconAlignment.end,
-              label: const Text('View plan'),
-              style: TextButton.styleFrom(foregroundColor: foreground),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilledButton.icon(
+                  onPressed: () => showAddSavingDialog(
+                    context: context,
+                    ref: ref,
+                    eventId: summary.event.id,
+                    currencyCode: currencyCode,
+                    currentSaved: summary.savedAmount,
+                  ),
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Add saving'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFFB68A3A),
+                    foregroundColor: const Color(0xFF29251F),
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: onViewPlans,
+                  icon: const Icon(Icons.arrow_forward),
+                  iconAlignment: IconAlignment.end,
+                  label: const Text('View plan'),
+                  style: TextButton.styleFrom(foregroundColor: foreground),
+                ),
+              ],
             ),
           ],
         ),
@@ -192,9 +261,13 @@ class _NextEventCard extends StatelessWidget {
 }
 
 class _UpcomingEventCard extends StatelessWidget {
-  const _UpcomingEventCard({required this.summary});
+  const _UpcomingEventCard({
+    required this.summary,
+    required this.currencyCode,
+  });
 
   final DashboardEventSummary summary;
+  final String currencyCode;
 
   @override
   Widget build(BuildContext context) {
@@ -240,7 +313,7 @@ class _UpcomingEventCard extends StatelessWidget {
             Text(
               summary.targetAmount == 0
                   ? 'No budget'
-                  : 'Rs ${_formatAmount(summary.targetAmount)}',
+                  : formatCurrency(summary.targetAmount, currencyCode),
               style: theme.textTheme.labelLarge?.copyWith(
                 color: theme.colorScheme.primary,
               ),
@@ -253,9 +326,15 @@ class _UpcomingEventCard extends StatelessWidget {
 }
 
 class _YearlySummary extends StatelessWidget {
-  const _YearlySummary({required this.totalPlannedAmount});
+  const _YearlySummary({
+    required this.totalPlannedAmount,
+    required this.monthlyAmountNeeded,
+    required this.currencyCode,
+  });
 
   final int totalPlannedAmount;
+  final int monthlyAmountNeeded;
+  final String currencyCode;
 
   @override
   Widget build(BuildContext context) {
@@ -280,11 +359,21 @@ class _YearlySummary extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Text(
-              'Rs ${_formatAmount(totalPlannedAmount)}',
+              formatCurrency(totalPlannedAmount, currencyCode),
               style: theme.textTheme.headlineMedium?.copyWith(
                 fontWeight: FontWeight.w700,
               ),
             ),
+            if (monthlyAmountNeeded > 0) ...[
+              const SizedBox(height: 6),
+              Text(
+                '~${formatCurrency(monthlyAmountNeeded, currencyCode)} / month needed',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  color: theme.colorScheme.onSecondaryContainer.withValues(alpha: 0.85),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ],
         ),
       ),

@@ -22,6 +22,10 @@ class DashboardEventSummary {
       (targetAmount - savedAmount).isNegative ? 0 : targetAmount - savedAmount;
   double get progress =>
       targetAmount == 0 ? 0 : (savedAmount / targetAmount).clamp(0, 1);
+  int get dailySavingRequired {
+    if (remainingAmount == 0 || daysRemaining <= 0) return 0;
+    return (remainingAmount / daysRemaining).ceil();
+  }
 }
 
 class DashboardData {
@@ -39,6 +43,8 @@ class DashboardData {
 
   DashboardEventSummary? get nextEvent =>
       upcomingEvents.isEmpty ? null : upcomingEvents.first;
+  int get monthlyAmountNeeded =>
+      totalPlannedAmount == 0 ? 0 : (totalPlannedAmount / 12).ceil();
 }
 
 class DashboardCalculator {

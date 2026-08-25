@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/providers/planner_data_refresh.dart';
 import '../../../core/providers/repository_providers.dart';
 import '../../../shared/models/app_settings.dart';
 import '../../../shared/widgets/app_state_view.dart';
@@ -96,8 +97,7 @@ class _SettingsContentState extends ConsumerState<_SettingsContent> {
         final restoredSettings = await ref.read(settingsRepositoryProvider).get();
         if (!mounted) return;
         setState(() => _settings = restoredSettings);
-        ref.invalidate(appSettingsProvider);
-        ref.invalidate(dashboardProvider);
+        refreshPlannerData(ref);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Backup imported successfully.')),
         );
