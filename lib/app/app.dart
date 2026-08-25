@@ -63,6 +63,7 @@ class _AppShellState extends ConsumerState<AppShell> {
         try {
           final coordinator = ref.read(reminderCoordinatorProvider);
           unawaited(coordinator.rescheduleAll());
+          unawaited(ref.read(hijriSyncServiceProvider).syncHijriDate(ref: ref));
         } catch (_) {}
         await _handleNotificationTap();
         if (await HomeWidget.initiallyLaunchedFromHomeWidget() != null &&

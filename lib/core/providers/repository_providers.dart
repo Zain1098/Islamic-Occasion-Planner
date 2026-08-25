@@ -15,6 +15,7 @@ import '../storage/hive_app_storage.dart';
 import '../services/date_service.dart';
 import '../services/backup_service.dart';
 import '../services/home_widget_service.dart';
+import '../services/hijri_sync_service.dart';
 import '../services/notification_service.dart';
 import '../services/reminder_coordinator.dart';
 
@@ -49,6 +50,12 @@ final appSettingsProvider = FutureProvider<AppSettings>(
 );
 final backupServiceProvider = Provider<BackupService>(
   (ref) => BackupService(ref.watch(appStorageProvider)),
+);
+final hijriSyncServiceProvider = Provider<HijriSyncService>(
+  (ref) => HijriSyncService(
+    settingsRepository: ref.watch(settingsRepositoryProvider),
+    dateService: ref.watch(dateServiceProvider),
+  ),
 );
 final reminderCoordinatorProvider = Provider<ReminderCoordinator>(
   (ref) => ReminderCoordinator(

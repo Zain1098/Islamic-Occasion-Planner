@@ -111,6 +111,25 @@ class _SettingsContentState extends ConsumerState<_SettingsContent> {
     }
   }
 
+  Future<void> _syncHijriNow() async {
+    setState(() => _busy = true);
+    try {
+      final result = await ref
+          .read(hijriSyncServiceProvider)
+          .syncHijriDate(force: true, ref: ref);
+      if (mounted) {
+        final restoredSettings =
+            await ref.read(settingsRepositoryProvider).get();
+        setState(() => _settings = restoredSettings);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(result.message)),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Settings')),
@@ -142,6 +161,26 @@ class _SettingsContentState extends ConsumerState<_SettingsContent> {
                     DropdownMenuItem(value: 1, child: Text('+1 day')),
                   ],
                 ),
+              ),
+              const Divider(height: 1),
+              SwitchListTile(
+                value: _settings.autoSyncHijri,
+                onChanged: _busy
+                    ? null
+                    : (enabled) => _save(
+                          _settings.copyWith(autoSyncHijri: enabled),
+                        ),
+                title: const Text('Auto-sync Hijri date (Online)'),
+                subtitle: const Text(
+                  'Auto-detect Pakistan moon sighting date when connected.',
+                ),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.sync_outlined),
+                title: const Text('Sync date now'),
+                subtitle: Text(_syncStatusText(_settings)),
+                onTap: _busy ? null : _syncHijriNow,
               ),
               const Divider(height: 1),
               ListTile(
@@ -216,4 +255,13 @@ class _SettingsContentState extends ConsumerState<_SettingsContent> {
       ],
     ),
   );
+}
+
+String _syncStatusText(AppSettings settings) {
+  if (settings.lastHijriSyncIso == null) {
+    return 'Not synced yet';
+  }
+  final adj = settings.hijriAdjustmentDays;
+  final adjStr = adj == 0 ? '0 days' : (adj > 0 ? '+$adj day' : '$adj day');
+  return 'Last synced: ${settings.lastHijriSyncIso} · Auto-adjusted ($adjStr)';
 }
