@@ -53,11 +53,16 @@ class ReminderCoordinator {
       hijriAdjustmentDays: settings.hijriAdjustmentDays,
     );
     final remaining = await _remainingAmount(event.id);
+    // Use per-event time if explicitly customised, otherwise fall back to
+    // the global reminder time from app settings.
+    final effectiveTime = preference.reminderTimeMinutes != 540
+        ? preference.reminderTimeMinutes
+        : settings.reminderTimeMinutes;
     for (final reminder in buildReminderSchedules(
       event: event,
       eventDate: eventDate,
       offsetsInDays: preference.offsetsInDays,
-      reminderTimeMinutes: preference.reminderTimeMinutes,
+      reminderTimeMinutes: effectiveTime,
       remainingAmount: remaining,
     )) {
       await _notifications.schedule(

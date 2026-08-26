@@ -79,8 +79,7 @@ class _DashboardContent extends ConsumerWidget {
               ),
               HijriDateSourceNotice(
                 isOfficial:
-                    ref.watch(appSettingsProvider).value?.lastHijriSyncIso ==
-                    '${data.today.year}-${data.today.month.toString().padLeft(2, '0')}-${data.today.day.toString().padLeft(2, '0')}',
+                    ref.watch(appSettingsProvider).value?.hijriSyncedToday(data.today) ?? false,
               ),
               const SizedBox(height: 24),
               if (data.nextEvent case final nextEvent?) ...[

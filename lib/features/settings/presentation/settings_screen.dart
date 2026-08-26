@@ -130,6 +130,21 @@ class _SettingsContentState extends ConsumerState<_SettingsContent> {
     }
   }
 
+  Future<void> _pickReminderTime() async {
+    final current = _settings.reminderTimeMinutes;
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: current ~/ 60, minute: current % 60),
+      helpText: 'Choose reminder time',
+    );
+    if (picked == null || !mounted) return;
+    final minutes = picked.hour * 60 + picked.minute;
+    await _save(
+      _settings.copyWith(reminderTimeMinutes: minutes),
+      reschedule: true,
+    );
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Settings')),
@@ -197,11 +212,22 @@ class _SettingsContentState extends ConsumerState<_SettingsContent> {
         const SizedBox(height: 24),
         Text('Reminders', style: Theme.of(context).textTheme.titleLarge),
         Card(
-          child: SwitchListTile(
-            value: _settings.notificationsEnabled,
-            onChanged: _busy ? null : _setNotifications,
-            title: const Text('Occasion reminders'),
-            subtitle: const Text('Receive your selected advance reminders.'),
+          child: Column(
+            children: [
+              SwitchListTile(
+                value: _settings.notificationsEnabled,
+                onChanged: _busy ? null : _setNotifications,
+                title: const Text('Occasion reminders'),
+                subtitle: const Text('Receive your selected advance reminders.'),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.access_time_outlined),
+                title: const Text('Reminder time'),
+                subtitle: Text(_formatTime(_settings.reminderTimeMinutes)),
+                onTap: _busy ? null : _pickReminderTime,
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 24),
@@ -264,4 +290,13 @@ String _syncStatusText(AppSettings settings) {
   final adj = settings.hijriAdjustmentDays;
   final adjStr = adj == 0 ? '0 days' : (adj > 0 ? '+$adj day' : '$adj day');
   return 'Last synced: ${settings.lastHijriSyncIso} · Auto-adjusted ($adjStr)';
+}
+
+String _formatTime(int totalMinutes) {
+  final hour = totalMinutes ~/ 60;
+  final minute = totalMinutes % 60;
+  final period = hour < 12 ? 'AM' : 'PM';
+  final displayHour = hour == 0 ? 12 : (hour > 12 ? hour - 12 : hour);
+  final displayMin = minute.toString().padLeft(2, '0');
+  return '$displayHour:$displayMin $period';
 }
