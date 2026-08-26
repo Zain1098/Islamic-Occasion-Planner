@@ -74,6 +74,20 @@ class NotificationService {
     );
   }
 
+  /// Schedules a real inexact Android alarm so users can verify permission,
+  /// channel delivery and launcher behavior without changing their plans.
+  Future<void> scheduleTestReminder() async {
+    const testId = 990001;
+    await cancel(testId);
+    await schedule(
+      id: testId,
+      title: 'Noor reminder test',
+      body: 'Your Android reminder was scheduled successfully.',
+      scheduledAt: DateTime.now().add(const Duration(minutes: 1)),
+      eventId: '',
+    );
+  }
+
   Future<void> cancel(int id) async {
     if (_initialized) await _plugin.cancel(id: id);
   }

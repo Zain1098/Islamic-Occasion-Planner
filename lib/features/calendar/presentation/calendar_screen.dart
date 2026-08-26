@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../events/presentation/events_screen.dart';
 import '../../../shared/widgets/app_state_view.dart';
+import '../../../core/providers/repository_providers.dart';
+import '../../../shared/widgets/hijri_date_source_notice.dart';
 import '../domain/calendar_data.dart';
 import 'calendar_provider.dart';
 
@@ -55,7 +57,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   }
 }
 
-class _CalendarContent extends StatelessWidget {
+class _CalendarContent extends ConsumerWidget {
   const _CalendarContent({
     required this.data,
     required this.selectedDate,
@@ -71,7 +73,7 @@ class _CalendarContent extends StatelessWidget {
   final ValueChanged<DateTime> onSelect;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final selectedDay = data.days
         .where((day) => _sameDate(day.date, selectedDate))
         .firstOrNull;
@@ -110,6 +112,12 @@ class _CalendarContent extends StatelessWidget {
               icon: const Icon(Icons.chevron_right),
             ),
           ],
+        ),
+        const SizedBox(height: 12),
+        HijriDateSourceNotice(
+          isOfficial:
+              ref.watch(appSettingsProvider).value?.lastHijriSyncIso ==
+              '${DateTime.now().year}-${DateTime.now().month.toString().padLeft(2, '0')}-${DateTime.now().day.toString().padLeft(2, '0')}',
         ),
         const SizedBox(height: 12),
         const _WeekdayHeader(),

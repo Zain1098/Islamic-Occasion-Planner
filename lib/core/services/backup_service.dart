@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import 'backup_encryption.dart';
 import '../../shared/models/app_settings.dart';
 import '../../shared/models/budget_item.dart';
 import '../../shared/models/islamic_event.dart';
@@ -32,6 +33,29 @@ class BackupService {
       ),
     );
   }
+  Future<void> exportEncryptedAndShare(String pin) async {
+    final directory = await getApplicationDocumentsDirectory();
+    final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
+    final file = File('${directory.path}/noor-encrypted-backup-$timestamp.json');
+    final encrypted = await BackupEncryption().encrypt(jsonEncode(_export()), pin);
+    await file.writeAsString(encrypted);
+    await SharePlus.instance.share(
+      ShareParams(
+        text: 'Noor encrypted Islamic Occasion Planner backup',
+        files: [XFile(file.path)],
+      ),
+    );
+  }
+
+  /// Writes the current local state before a destructive restore.
+  Future<String> createSafetyBackup() async {
+    final directory = await getApplicationDocumentsDirectory();
+    final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
+    final file = File('${directory.path}/noor-safety-backup-$timestamp.json');
+    await file.writeAsString(const JsonEncoder.withIndent('  ').convert(_export()));
+    return file.path;
+  }
+
 
   Future<bool> importFromPicker() async {
     final pickedFile = await FilePicker.pickFile(
@@ -81,6 +105,7 @@ class BackupService {
       );
     }
 
+    await createSafetyBackup();
     await _storage.replaceAll(
       events: {
         for (final item in parsedEvents) item.id: jsonEncode(item.toMap()),

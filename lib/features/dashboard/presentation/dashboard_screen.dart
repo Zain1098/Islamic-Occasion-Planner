@@ -11,6 +11,7 @@ import 'dashboard_provider.dart';
 
 import '../../../core/utils/currency_formatter.dart';
 import '../../savings/presentation/add_saving_dialog.dart';
+import '../../../shared/widgets/hijri_date_source_notice.dart';
 
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key, required this.onViewPlans});
@@ -76,6 +77,11 @@ class _DashboardContent extends ConsumerWidget {
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
+              HijriDateSourceNotice(
+                isOfficial:
+                    ref.watch(appSettingsProvider).value?.lastHijriSyncIso ==
+                    '${data.today.year}-${data.today.month.toString().padLeft(2, '0')}-${data.today.day.toString().padLeft(2, '0')}',
+              ),
               const SizedBox(height: 24),
               if (data.nextEvent case final nextEvent?) ...[
                 _NextEventCard(
@@ -135,7 +141,10 @@ class _NextEventCard extends ConsumerWidget {
     final savedText = formatCurrency(summary.savedAmount, currencyCode);
     final targetText = formatCurrency(summary.targetAmount, currencyCode);
     final remainingText = formatCurrency(summary.remainingAmount, currencyCode);
-    final dailyRateText = formatCurrency(summary.dailySavingRequired, currencyCode);
+    final dailyRateText = formatCurrency(
+      summary.dailySavingRequired,
+      currencyCode,
+    );
 
     final statusText = isBudgeted
         ? '$savedText saved of $targetText ($remainingText left)'
@@ -261,10 +270,7 @@ class _NextEventCard extends ConsumerWidget {
 }
 
 class _UpcomingEventCard extends StatelessWidget {
-  const _UpcomingEventCard({
-    required this.summary,
-    required this.currencyCode,
-  });
+  const _UpcomingEventCard({required this.summary, required this.currencyCode});
 
   final DashboardEventSummary summary;
   final String currencyCode;
@@ -369,7 +375,9 @@ class _YearlySummary extends StatelessWidget {
               Text(
                 '~${formatCurrency(monthlyAmountNeeded, currencyCode)} / month needed',
                 style: theme.textTheme.titleMedium?.copyWith(
-                  color: theme.colorScheme.onSecondaryContainer.withValues(alpha: 0.85),
+                  color: theme.colorScheme.onSecondaryContainer.withValues(
+                    alpha: 0.85,
+                  ),
                   fontWeight: FontWeight.w600,
                 ),
               ),
