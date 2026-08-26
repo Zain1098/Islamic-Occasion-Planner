@@ -26,7 +26,7 @@ void main() {
       final service = HijriSyncService(
         settingsRepository: repository,
         dateService: DateService(clock: () => DateTime(2026, 8, 25)),
-        request: (_, __) async => '''[
+        request: (_, _) async => '''[
         {
           "hijri_year": 1448,
           "hijri_month": 3,

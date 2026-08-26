@@ -77,7 +77,8 @@ class BackupEncryption {
   );
 
   void _validatePin(String pin) {
-    if (pin.length < 6)
+    if (pin.length < 6) {
       throw const FormatException('Use a PIN of at least 6 characters.');
+    }
   }
 }

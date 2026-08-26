@@ -25,11 +25,10 @@ class HijriSyncResult {
 
 class HijriSyncService {
   HijriSyncService({
-    required SettingsRepository settingsRepository,
+    required this._settingsRepository,
     required DateService dateService,
     OfficialHijriRequest? request,
-  }) : _settingsRepository = settingsRepository,
-       _dateService = dateService,
+  }) : _dateService = dateService,
        _request = request ?? _get;
 
   final SettingsRepository _settingsRepository;
@@ -171,8 +170,9 @@ class HijriSyncService {
       );
       if (candidate.year == year &&
           candidate.month == month &&
-          candidate.day == day)
+          candidate.day == day) {
         return adjustment;
+      }
     }
     return null;
   }
@@ -201,10 +201,11 @@ class HijriSyncService {
         const Duration(seconds: 8),
       );
       final body = await response.transform(utf8.decoder).join();
-      if (response.statusCode != HttpStatus.ok)
+      if (response.statusCode != HttpStatus.ok) {
         throw HttpException(
           'Official Hijri request returned ${response.statusCode}.',
         );
+      }
       return body;
     } finally {
       client.close(force: true);

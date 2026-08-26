@@ -1,4 +1,3 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../features/budget/presentation/event_plan_provider.dart';
 import '../../features/calendar/presentation/calendar_provider.dart';

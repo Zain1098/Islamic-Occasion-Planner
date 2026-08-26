@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/providers/planner_data_refresh.dart';
 import '../../../core/providers/repository_providers.dart';
-import '../../../core/utils/currency_formatter.dart';
 import '../../../core/utils/identifier_generator.dart';
 import '../../../shared/models/saving_entry.dart';
 
