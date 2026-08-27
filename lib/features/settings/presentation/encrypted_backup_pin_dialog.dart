@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
 
-Future<String?> showEncryptedBackupPinDialog(BuildContext context) async {
+Future<String?> showEncryptedBackupPinDialog(
+  BuildContext context, {
+  String title = 'Create encrypted backup',
+  String description =
+      'Use a PIN of at least 6 characters. Noor cannot recover a forgotten PIN.',
+  String actionLabel = 'Create backup',
+}) async {
   final pin = TextEditingController();
   final confirmation = TextEditingController();
   String? error;
@@ -9,13 +15,11 @@ Future<String?> showEncryptedBackupPinDialog(BuildContext context) async {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Create encrypted backup'),
+          title: Text(title),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
-                'Use a PIN of at least 6 characters. Noor cannot recover a forgotten PIN.',
-              ),
+              Text(description),
               const SizedBox(height: 16),
               TextField(
                 controller: pin,
@@ -55,7 +59,7 @@ Future<String?> showEncryptedBackupPinDialog(BuildContext context) async {
                   Navigator.pop(dialogContext, pin.text);
                 }
               },
-              child: const Text('Create backup'),
+              child: Text(actionLabel),
             ),
           ],
         ),
@@ -64,5 +68,55 @@ Future<String?> showEncryptedBackupPinDialog(BuildContext context) async {
   } finally {
     pin.dispose();
     confirmation.dispose();
+  }
+}
+
+Future<String?> showEncryptedBackupUnlockDialog(BuildContext context) async {
+  final pin = TextEditingController();
+  String? error;
+  try {
+    return await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Unlock encrypted backup'),
+          content: TextField(
+            controller: pin,
+            obscureText: true,
+            autocorrect: false,
+            enableSuggestions: false,
+            decoration: InputDecoration(
+              labelText: 'Backup PIN',
+              errorText: error,
+            ),
+            onSubmitted: (value) {
+              if (value.length < 6) {
+                setDialogState(() => error = 'Enter your backup PIN.');
+              } else {
+                Navigator.pop(dialogContext, value);
+              }
+            },
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                if (pin.text.length < 6) {
+                  setDialogState(() => error = 'Enter your backup PIN.');
+                } else {
+                  Navigator.pop(dialogContext, pin.text);
+                }
+              },
+              child: const Text('Unlock'),
+            ),
+          ],
+        ),
+      ),
+    );
+  } finally {
+    pin.dispose();
   }
 }

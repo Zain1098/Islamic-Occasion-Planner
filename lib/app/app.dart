@@ -7,6 +7,7 @@ import 'package:home_widget/home_widget.dart';
 import '../core/providers/repository_providers.dart';
 import '../core/services/notification_service.dart';
 import '../features/dashboard/presentation/dashboard_screen.dart';
+import '../features/dashboard/presentation/dashboard_provider.dart';
 import '../features/calendar/presentation/calendar_screen.dart';
 import '../features/events/presentation/events_screen.dart';
 import '../features/settings/presentation/settings_screen.dart';
@@ -60,11 +61,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     });
     WidgetsBinding.instance.addPostFrameCallback(
       (_) async {
-        try {
-          final coordinator = ref.read(reminderCoordinatorProvider);
-          unawaited(coordinator.rescheduleAll());
-          unawaited(ref.read(hijriSyncServiceProvider).syncHijriDate(ref: ref));
-        } catch (_) {}
+        unawaited(_refreshSchedulesAfterHijriSync());
         await _handleNotificationTap();
         if (await HomeWidget.initiallyLaunchedFromHomeWidget() != null &&
             mounted) {
@@ -72,6 +69,19 @@ class _AppShellState extends ConsumerState<AppShell> {
         }
       },
     );
+  }
+
+  Future<void> _refreshSchedulesAfterHijriSync() async {
+    try {
+      final coordinator = ref.read(reminderCoordinatorProvider);
+      await coordinator.rescheduleAll();
+      final result = await ref
+          .read(hijriSyncServiceProvider)
+          .syncHijriDate(ref: ref);
+      if (result.success) await coordinator.rescheduleAll();
+    } catch (_) {
+      // A sync failure keeps existing local reminder schedules intact.
+    }
   }
 
   Future<void> _handleNotificationTap() async {
@@ -125,6 +135,12 @@ class _AppShellState extends ConsumerState<AppShell> {
 
   @override
   Widget build(BuildContext context) {
+    final dashboard = ref.watch(dashboardProvider);
+    dashboard.whenData((data) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(ref.read(homeWidgetServiceProvider).update(data));
+      });
+    });
     return Scaffold(
       body: SafeArea(
         child: switch (_selectedIndex) {

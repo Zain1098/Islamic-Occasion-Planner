@@ -2,40 +2,42 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../../features/settings/data/settings_repository.dart';
+import '../config/app_config.dart';
 import '../providers/planner_data_refresh.dart';
 import 'date_service.dart';
+import 'official_hijri_month.dart';
+
+typedef OfficialHijriRequest =
+    Future<String> Function(Uri, Map<String, String>);
 
 class HijriSyncResult {
   const HijriSyncResult({
     required this.success,
     required this.message,
     this.adjustmentDays,
+    this.officialMonth,
   });
+
   final bool success;
   final String message;
   final int? adjustmentDays;
+  final OfficialHijriMonth? officialMonth;
 }
 
-/// Fetches the real-time Pakistan Hijri date from Aladhan API using the
-/// Karachi calculation method (University of Islamic Sciences, Karachi —
-/// method 1), then auto-sets hijriAdjustmentDays so the app matches the
-/// Ruet-e-Hilal / Pakistan moon-sighting date every day.
-///
-/// Endpoint chain (tried in order until one succeeds):
-///   1. timingsByCity – Karachi, Pakistan, method=1
-///   2. gToH          – standard Aladhan Gregorian→Hijri
+/// Uses only published, confirmed Pakistan committee records. Calculated or
+/// network data is deliberately never treated as official confirmation.
 class HijriSyncService {
   HijriSyncService({
     required SettingsRepository settingsRepository,
     required DateService dateService,
-    HttpClient? httpClient,
-  })  : _settingsRepository = settingsRepository,
-        _dateService = dateService,
-        _client = httpClient ?? HttpClient();
+    OfficialHijriRequest? request,
+  }) : _settingsRepository = settingsRepository,
+       _dateService = dateService,
+       _request = request ?? _get;
 
   final SettingsRepository _settingsRepository;
   final DateService _dateService;
-  final HttpClient _client;
+  final OfficialHijriRequest _request;
 
   Future<HijriSyncResult> syncHijriDate({
     bool force = false,
@@ -45,120 +47,165 @@ class HijriSyncService {
     if (!force && !settings.autoSyncHijri) {
       return const HijriSyncResult(
         success: false,
-        message: 'Auto-sync is disabled in settings.',
+        message: 'Official Hijri auto-sync is disabled in settings.',
       );
     }
-
+    if (!AppConfig.hasOfficialHijriConfiguration) {
+      return const HijriSyncResult(
+        success: false,
+        message:
+            'Official Hijri source is not configured. Using calculated date.',
+      );
+    }
     final today = _dateService.today();
     final todayIso = _isoDate(today);
-
     if (!force && settings.lastHijriSyncIso == todayIso) {
       return HijriSyncResult(
         success: true,
-        message: 'Already synced today.',
+        message: 'Official Hijri date already synced today.',
         adjustmentDays: settings.hijriAdjustmentDays,
       );
     }
-
-    // DD-MM-YYYY format required by Aladhan API
-    final ddmmyyyy =
-        '${today.day.toString().padLeft(2, '0')}-${today.month.toString().padLeft(2, '0')}-${today.year}';
-
-    final endpoints = [
-      // Method 1 = University of Islamic Sciences, Karachi
-      // — closest to official Pakistan Ruet-e-Hilal Committee dates
-      Uri.parse(
-          'https://api.aladhan.com/v1/timingsByCity/$ddmmyyyy?city=Karachi&country=Pakistan&method=1'),
-      // Fallback: plain Gregorian→Hijri conversion
-      Uri.parse('https://api.aladhan.com/v1/gToH/$ddmmyyyy'),
-    ];
-
-    Map<String, dynamic>? hijriData;
-    String usedSource = 'Unknown';
-
-    for (final url in endpoints) {
-      try {
-        final req = await _client.getUrl(url).timeout(const Duration(seconds: 8));
-        final res = await req.close().timeout(const Duration(seconds: 8));
-        if (res.statusCode == 200) {
-          final body = await res.transform(utf8.decoder).join();
-          final json = jsonDecode(body) as Map<String, dynamic>;
-          if (json['code'] == 200 && json['data'] != null) {
-            final data = json['data'] as Map<String, dynamic>;
-            // timingsByCity wraps hijri inside data.date.hijri
-            if (data['date'] is Map &&
-                (data['date'] as Map)['hijri'] != null) {
-              hijriData =
-                  (data['date'] as Map<String, dynamic>)['hijri'] as Map<String, dynamic>;
-              usedSource = 'Karachi (method 1)';
-              break;
-            }
-            // gToH puts hijri directly in data.hijri
-            if (data['hijri'] != null) {
-              hijriData = data['hijri'] as Map<String, dynamic>;
-              usedSource = 'Aladhan gToH';
-              break;
-            }
-          }
-        }
-      } on SocketException {
-        // try next endpoint
-      } on TimeoutException {
-        // try next endpoint
-      } catch (_) {
-        // try next endpoint
+    try {
+      final record = await _fetchLatestConfirmedMonth(today);
+      if (record == null) {
+        return const HijriSyncResult(
+          success: false,
+          message:
+              'No confirmed Ruet-e-Hilal Committee record is published yet. Using calculated date.',
+        );
       }
-    }
-
-    if (hijriData == null) {
+      final day = today.difference(record.startsOn).inDays + 1;
+      // A Hijri lunar month is never longer than 30 days. Do not interpret a
+      // Hijri year/month as Gregorian values when validating this record.
+      if (day < 1 || day > 30) {
+        return const HijriSyncResult(
+          success: false,
+          message:
+              'Latest official Hijri record does not cover today. Using calculated date.',
+        );
+      }
+      final adjustment = _matchingAdjustment(
+        today: today,
+        year: record.year,
+        month: record.month,
+        day: day,
+      );
+      if (adjustment == null) {
+        return HijriSyncResult(
+          success: false,
+          message:
+              'Official date differs by more than one day. Keeping calculated date for safety.',
+          officialMonth: record,
+        );
+      }
+      await _settingsRepository.save(
+        settings.copyWith(
+          hijriAdjustmentDays: adjustment,
+          lastHijriSyncIso: todayIso,
+        ),
+      );
+      if (ref != null) refreshPlannerData(ref);
       return HijriSyncResult(
+        success: true,
+        message:
+            'Synced with ${record.authorityName} (${_adjustmentLabel(adjustment)}).',
+        adjustmentDays: adjustment,
+        officialMonth: record,
+      );
+    } on SocketException {
+      return const HijriSyncResult(
         success: false,
-        message: 'Network offline – keeping last saved adjustment.',
-        adjustmentDays: settings.hijriAdjustmentDays,
+        message: 'Network unavailable. Using calculated date.',
+      );
+    } on HttpException {
+      return const HijriSyncResult(
+        success: false,
+        message:
+            'Official Hijri source could not be reached. Using calculated date.',
+      );
+    } on FormatException {
+      return const HijriSyncResult(
+        success: false,
+        message: 'Official Hijri record is invalid. Using calculated date.',
+      );
+    } catch (_) {
+      return const HijriSyncResult(
+        success: false,
+        message: 'Official Hijri sync failed. Using calculated date.',
       );
     }
-
-    final onlineDay = int.parse(hijriData['day'].toString().trim());
-    final onlineMonth = int.parse(
-        (hijriData['month'] as Map<String, dynamic>)['number'].toString());
-
-    // Try -1, 0, +1 to find which adjustment makes local == online
-    int? adjustment;
-    for (final adj in const [-1, 0, 1]) {
-      final candidate = _dateService.hijriDateFor(today, adjustmentDays: adj);
-      if (candidate.day == onlineDay && candidate.month == onlineMonth) {
-        adjustment = adj;
-        break;
-      }
-    }
-
-    // If no exact match (can happen at month boundaries), clamp to nearest
-    if (adjustment == null) {
-      final zeroAdj = _dateService.hijriDateFor(today, adjustmentDays: 0);
-      final diff = onlineDay - zeroAdj.day;
-      adjustment = diff.clamp(-1, 1);
-    }
-
-    await _settingsRepository.save(
-      settings.copyWith(
-        hijriAdjustmentDays: adjustment,
-        lastHijriSyncIso: todayIso,
-      ),
-    );
-
-    if (ref != null) refreshPlannerData(ref);
-
-    final adjLabel = adjustment == 0
-        ? 'no change'
-        : (adjustment > 0 ? '+$adjustment day' : '$adjustment day');
-    return HijriSyncResult(
-      success: true,
-      message:
-          'Synced via $usedSource · Pakistan date: $onlineDay/$onlineMonth AH ($adjLabel)',
-      adjustmentDays: adjustment,
-    );
   }
 
-  static String _isoDate(DateTime d) =>
-      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  Future<OfficialHijriMonth?> _fetchLatestConfirmedMonth(DateTime today) async {
+    final uri =
+        Uri.parse(
+          '${AppConfig.supabaseUrl}/rest/v1/official_hijri_months',
+        ).replace(
+          queryParameters: {
+            'select':
+                'hijri_year,hijri_month,starts_on,authority_name,source_url,announced_at',
+            'country_code': 'eq.PK',
+            'status': 'eq.confirmed',
+            'starts_on': 'lte.${_isoDate(today)}',
+            'order': 'starts_on.desc',
+            'limit': '1',
+          },
+        );
+    final body = await _request(uri, {
+      'apikey': AppConfig.supabasePublishableKey,
+      'Authorization': 'Bearer ${AppConfig.supabasePublishableKey}',
+      'Accept': 'application/json',
+    });
+    final rows = jsonDecode(body) as List<dynamic>;
+    return rows.isEmpty
+        ? null
+        : OfficialHijriMonth.fromMap(rows.first as Map<String, dynamic>);
+  }
+
+  int? _matchingAdjustment({
+    required DateTime today,
+    required int year,
+    required int month,
+    required int day,
+  }) {
+    for (final adjustment in const [-1, 0, 1]) {
+      final candidate = _dateService.hijriDateFor(
+        today,
+        adjustmentDays: adjustment,
+      );
+      if (candidate.year == year &&
+          candidate.month == month &&
+          candidate.day == day)
+        return adjustment;
+    }
+    return null;
+  }
+
+  static String _isoDate(DateTime date) =>
+      '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+  static String _adjustmentLabel(int adjustment) => adjustment == 0
+      ? 'no adjustment'
+      : '${adjustment > 0 ? '+' : ''}$adjustment day';
+
+  static Future<String> _get(Uri uri, Map<String, String> headers) async {
+    final client = HttpClient();
+    try {
+      final request = await client
+          .getUrl(uri)
+          .timeout(const Duration(seconds: 8));
+      headers.forEach(request.headers.set);
+      final response = await request.close().timeout(
+        const Duration(seconds: 8),
+      );
+      final body = await response.transform(utf8.decoder).join();
+      if (response.statusCode != HttpStatus.ok)
+        throw HttpException(
+          'Official Hijri request returned ${response.statusCode}.',
+        );
+      return body;
+    } finally {
+      client.close(force: true);
+    }
+  }
 }

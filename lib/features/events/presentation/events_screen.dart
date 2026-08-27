@@ -10,11 +10,27 @@ import '../../../shared/widgets/app_state_view.dart';
 import '../data/hive_event_repository.dart';
 import 'events_provider.dart';
 
-class EventsScreen extends ConsumerWidget {
+enum _PlanFilter { all, ramadanEid, custom, disabled }
+
+class EventsScreen extends ConsumerStatefulWidget {
   const EventsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<EventsScreen> createState() => _EventsScreenState();
+}
+
+class _EventsScreenState extends ConsumerState<EventsScreen> {
+  final _searchController = TextEditingController();
+  _PlanFilter _filter = _PlanFilter.all;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final events = ref.watch(eventsProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('Occasion plans')),
@@ -29,18 +45,68 @@ class EventsScreen extends ConsumerWidget {
           message: 'Occasion plans could not be loaded.',
           onRetry: () => ref.invalidate(eventsProvider),
         ),
-        data: (items) => items.isEmpty
-            ? const Center(
-                child: Text('Add an occasion you want to prepare for.'),
-              )
-            : ListView.separated(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
-                itemCount: items.length,
-                separatorBuilder: (context, index) =>
+        data: (items) {
+          final filtered = _filtered(items);
+          return items.isEmpty
+              ? const Center(
+                  child: Text('Add an occasion you want to prepare for.'),
+                )
+              : ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+                  children: [
+                    TextField(
+                      controller: _searchController,
+                      onChanged: (_) => setState(() {}),
+                      decoration: InputDecoration(
+                        prefixIcon: const Icon(Icons.search),
+                        hintText: 'Search occasion plans',
+                        suffixIcon: _searchController.text.isEmpty
+                            ? null
+                            : IconButton(
+                                tooltip: 'Clear search',
+                                icon: const Icon(Icons.clear),
+                                onPressed: () {
+                                  _searchController.clear();
+                                  setState(() {});
+                                },
+                              ),
+                      ),
+                    ),
                     const SizedBox(height: 10),
-                itemBuilder: (context, index) =>
-                    _EventTile(event: items[index]),
-              ),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          for (final filter in _PlanFilter.values) ...[
+                            ChoiceChip(
+                              label: Text(_filterLabel(filter)),
+                              selected: _filter == filter,
+                              onSelected: (_) =>
+                                  setState(() => _filter = filter),
+                            ),
+                            const SizedBox(width: 8),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    if (filtered.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.all(24),
+                        child: Center(
+                          child: Text('No plans match this filter.'),
+                        ),
+                      )
+                    else
+                      ...filtered.map(
+                        (event) => Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: _EventTile(event: event),
+                        ),
+                      ),
+                  ],
+                );
+        },
       ),
     );
   }
@@ -51,7 +117,35 @@ class EventsScreen extends ConsumerWidget {
     );
     if (saved == true) ref.invalidate(eventsProvider);
   }
+
+  List<IslamicEvent> _filtered(List<IslamicEvent> events) {
+    final query = _searchController.text.trim().toLowerCase();
+    return events
+        .where((event) {
+          final title = event.title.toLowerCase();
+          final isRamadanEid =
+              title.contains('ramadan') || title.contains('eid');
+          final matchesFilter = switch (_filter) {
+            _PlanFilter.all => true,
+            _PlanFilter.ramadanEid => isRamadanEid,
+            _PlanFilter.custom => !isDefaultIslamicOccasion(event),
+            _PlanFilter.disabled => !event.enabled,
+          };
+          return matchesFilter &&
+              (query.isEmpty ||
+                  title.contains(query) ||
+                  (event.notes?.toLowerCase().contains(query) ?? false));
+        })
+        .toList(growable: false);
+  }
 }
+
+String _filterLabel(_PlanFilter filter) => switch (filter) {
+  _PlanFilter.all => 'Upcoming',
+  _PlanFilter.ramadanEid => 'Ramadan & Eid',
+  _PlanFilter.custom => 'Custom',
+  _PlanFilter.disabled => 'Disabled',
+};
 
 class _EventTile extends ConsumerWidget {
   const _EventTile({required this.event});

@@ -3,9 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/providers/planner_data_refresh.dart';
 import '../../../core/providers/repository_providers.dart';
+import '../../../core/services/backup_service.dart';
 import '../../../shared/models/app_settings.dart';
 import '../../../shared/widgets/app_state_view.dart';
 import '../../dashboard/presentation/dashboard_provider.dart';
+import 'encrypted_backup_pin_dialog.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -47,7 +49,8 @@ class _SettingsContentState extends ConsumerState<_SettingsContent> {
     setState(() => _busy = true);
     try {
       await ref.read(settingsRepositoryProvider).save(updated);
-      if (reschedule) await ref.read(reminderCoordinatorProvider).rescheduleAll();
+      if (reschedule)
+        await ref.read(reminderCoordinatorProvider).rescheduleAll();
       if (mounted) {
         setState(() => _settings = updated);
         ref.invalidate(appSettingsProvider);
@@ -60,55 +63,129 @@ class _SettingsContentState extends ConsumerState<_SettingsContent> {
 
   Future<void> _setNotifications(bool enabled) async {
     if (enabled) {
-      final granted = await ref.read(notificationServiceProvider).requestPermission();
+      final granted = await ref
+          .read(notificationServiceProvider)
+          .requestPermission();
       if (!granted) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Notification permission was not granted.')),
+            const SnackBar(
+              content: Text('Notification permission was not granted.'),
+            ),
           );
         }
         return;
       }
     }
-    await _save(_settings.copyWith(notificationsEnabled: enabled), reschedule: true);
+    await _save(
+      _settings.copyWith(notificationsEnabled: enabled),
+      reschedule: true,
+    );
   }
 
   Future<void> _importBackup() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Replace current planner data?'),
-        content: const Text(
-          'Importing a backup replaces occasions, budgets, savings, reminders, and settings currently stored on this phone.',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Import')),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
     setState(() => _busy = true);
     try {
-      final imported = await ref.read(backupServiceProvider).importFromPicker();
-      if (!imported) return;
+      final backup = ref.read(backupServiceProvider);
+      var source = await backup.pickBackupSource();
+      if (source == null || !mounted) return;
+      String? safetyBackupPin;
+      if (backup.isEncryptedBackup(source)) {
+        final pin = await showEncryptedBackupUnlockDialog(context);
+        if (pin == null || !mounted) return;
+        source = await backup.decryptBackup(source, pin);
+        safetyBackupPin = pin;
+      }
+      final preview = backup.previewJson(source);
+      if (!mounted) return;
+      final confirmed = await _confirmRestore(preview);
+      if (confirmed != true) return;
+      safetyBackupPin ??= await showEncryptedBackupPinDialog(
+        context,
+        title: 'Protect safety backup',
+        description:
+            'Choose a PIN for the encrypted copy of your current planner data. You will need it if you ever restore this safety backup.',
+        actionLabel: 'Continue import',
+      );
+      if (safetyBackupPin == null || !mounted) return;
+      await backup.importJson(source, safetyBackupPin: safetyBackupPin);
       await ref.read(reminderCoordinatorProvider).rescheduleAll();
       if (mounted) {
-        final restoredSettings = await ref.read(settingsRepositoryProvider).get();
+        final restoredSettings = await ref
+            .read(settingsRepositoryProvider)
+            .get();
         if (!mounted) return;
         setState(() => _settings = restoredSettings);
         refreshPlannerData(ref);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Backup imported successfully.')),
+          const SnackBar(
+            content: Text('Backup imported. An encrypted safety backup was saved first.'),
+          ),
         );
       }
     } on FormatException catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
-      }
+      if (mounted)
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Future<bool?> _confirmRestore(BackupPreview preview) => showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Replace current planner data?'),
+      content: Text(
+        'This backup contains ${preview.events} occasions, ${preview.budgetItems} budget items, ${preview.savingEntries} savings entries, and ${preview.reminders} reminder plans.\n\nImporting replaces current local data. Noor will first create a safety backup.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('Import'),
+        ),
+      ],
+    ),
+  );
+
+  Future<void> _exportEncryptedBackup() async {
+    final pin = await showEncryptedBackupPinDialog(context);
+    if (pin == null || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      await ref.read(backupServiceProvider).exportEncryptedAndShare(pin);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _scheduleTestReminder() async {
+    final granted = await ref
+        .read(notificationServiceProvider)
+        .requestPermission();
+    if (!granted) {
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Allow notifications in Android settings first.'),
+          ),
+        );
+      return;
+    }
+    await ref.read(notificationServiceProvider).scheduleTestReminder();
+    if (mounted)
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Test reminder scheduled for about one minute from now.',
+          ),
+        ),
+      );
   }
 
   Future<void> _syncHijriNow() async {
@@ -117,13 +194,17 @@ class _SettingsContentState extends ConsumerState<_SettingsContent> {
       final result = await ref
           .read(hijriSyncServiceProvider)
           .syncHijriDate(force: true, ref: ref);
+      if (result.success) {
+        await ref.read(reminderCoordinatorProvider).rescheduleAll();
+      }
       if (mounted) {
-        final restoredSettings =
-            await ref.read(settingsRepositoryProvider).get();
+        final restoredSettings = await ref
+            .read(settingsRepositoryProvider)
+            .get();
         setState(() => _settings = restoredSettings);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(result.message)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(result.message)));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -162,14 +243,16 @@ class _SettingsContentState extends ConsumerState<_SettingsContent> {
                 trailing: DropdownButton<int>(
                   value: _settings.hijriAdjustmentDays,
                   underline: const SizedBox.shrink(),
-                  onChanged: _busy ? null : (value) {
-                    if (value != null) {
-                      _save(
-                        _settings.copyWith(hijriAdjustmentDays: value),
-                        reschedule: true,
-                      );
-                    }
-                  },
+                  onChanged: _busy
+                      ? null
+                      : (value) {
+                          if (value != null) {
+                            _save(
+                              _settings.copyWith(hijriAdjustmentDays: value),
+                              reschedule: true,
+                            );
+                          }
+                        },
                   items: const [
                     DropdownMenuItem(value: -1, child: Text('-1 day')),
                     DropdownMenuItem(value: 0, child: Text('0 days')),
@@ -182,9 +265,8 @@ class _SettingsContentState extends ConsumerState<_SettingsContent> {
                 value: _settings.autoSyncHijri,
                 onChanged: _busy
                     ? null
-                    : (enabled) => _save(
-                          _settings.copyWith(autoSyncHijri: enabled),
-                        ),
+                    : (enabled) =>
+                          _save(_settings.copyWith(autoSyncHijri: enabled)),
                 title: const Text('Auto-sync Hijri date (Online)'),
                 subtitle: const Text(
                   'Auto-detect Pakistan moon sighting date when connected.',
@@ -218,7 +300,18 @@ class _SettingsContentState extends ConsumerState<_SettingsContent> {
                 value: _settings.notificationsEnabled,
                 onChanged: _busy ? null : _setNotifications,
                 title: const Text('Occasion reminders'),
-                subtitle: const Text('Receive your selected advance reminders.'),
+                subtitle: const Text(
+                  'Receive your selected advance reminders.',
+                ),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.notifications_active_outlined),
+                title: const Text('Send test reminder'),
+                subtitle: const Text(
+                  'Schedules a test notification in about one minute.',
+                ),
+                onTap: _busy ? null : _scheduleTestReminder,
               ),
               const Divider(height: 1),
               ListTile(
@@ -238,14 +331,25 @@ class _SettingsContentState extends ConsumerState<_SettingsContent> {
             trailing: DropdownButton<AppThemePreference>(
               value: _settings.themeMode,
               underline: const SizedBox.shrink(),
-              onChanged: _busy ? null : (value) {
-                if (value == null) return;
-                _save(_settings.copyWith(themeMode: value));
-              },
+              onChanged: _busy
+                  ? null
+                  : (value) {
+                      if (value == null) return;
+                      _save(_settings.copyWith(themeMode: value));
+                    },
               items: const [
-                DropdownMenuItem(value: AppThemePreference.system, child: Text('System')),
-                DropdownMenuItem(value: AppThemePreference.light, child: Text('Light')),
-                DropdownMenuItem(value: AppThemePreference.dark, child: Text('Dark')),
+                DropdownMenuItem(
+                  value: AppThemePreference.system,
+                  child: Text('System'),
+                ),
+                DropdownMenuItem(
+                  value: AppThemePreference.light,
+                  child: Text('Light'),
+                ),
+                DropdownMenuItem(
+                  value: AppThemePreference.dark,
+                  child: Text('Dark'),
+                ),
               ],
             ),
           ),
@@ -259,20 +363,33 @@ class _SettingsContentState extends ConsumerState<_SettingsContent> {
                 leading: const Icon(Icons.ios_share_outlined),
                 title: const Text('Export backup'),
                 subtitle: const Text('Save all local planner data as JSON.'),
-                onTap: _busy ? null : () async {
-                  setState(() => _busy = true);
-                  try {
-                    await ref.read(backupServiceProvider).exportAndShare();
-                  } finally {
-                    if (mounted) setState(() => _busy = false);
-                  }
-                },
+                onTap: _busy
+                    ? null
+                    : () async {
+                        setState(() => _busy = true);
+                        try {
+                          await ref
+                              .read(backupServiceProvider)
+                              .exportAndShare();
+                        } finally {
+                          if (mounted) setState(() => _busy = false);
+                        }
+                      },
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.lock_outline),
+                title: const Text('Export encrypted backup'),
+                subtitle: const Text('Protect your planner data with a PIN.'),
+                onTap: _busy ? null : _exportEncryptedBackup,
               ),
               const Divider(height: 1),
               ListTile(
                 leading: const Icon(Icons.file_open_outlined),
                 title: const Text('Import backup'),
-                subtitle: const Text('Restore a previously exported JSON file.'),
+                subtitle: const Text(
+                  'Restore a previously exported JSON file.',
+                ),
                 onTap: _busy ? null : _importBackup,
               ),
             ],

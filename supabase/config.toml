@@ -1,0 +1,2 @@
+[functions.ingest-official-hijri]
+verify_jwt = false

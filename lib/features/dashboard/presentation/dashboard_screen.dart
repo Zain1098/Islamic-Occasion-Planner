@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -30,16 +28,11 @@ class DashboardScreen extends ConsumerWidget {
         message: 'Your dashboard could not be loaded.',
         onRetry: () => ref.invalidate(dashboardProvider),
       ),
-      data: (data) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          unawaited(ref.read(homeWidgetServiceProvider).update(data));
-        });
-        return _DashboardContent(
+      data: (data) => _DashboardContent(
           data: data,
           onViewPlans: onViewPlans,
           currencyCode: currencyCode,
-        );
-      },
+        ),
     );
   }
 }

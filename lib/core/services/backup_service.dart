@@ -33,11 +33,17 @@ class BackupService {
       ),
     );
   }
+
   Future<void> exportEncryptedAndShare(String pin) async {
     final directory = await getApplicationDocumentsDirectory();
     final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
-    final file = File('${directory.path}/noor-encrypted-backup-$timestamp.json');
-    final encrypted = await BackupEncryption().encrypt(jsonEncode(_export()), pin);
+    final file = File(
+      '${directory.path}/noor-encrypted-backup-$timestamp.json',
+    );
+    final encrypted = await BackupEncryption().encrypt(
+      jsonEncode(_export()),
+      pin,
+    );
     await file.writeAsString(encrypted);
     await SharePlus.instance.share(
       ShareParams(
@@ -47,36 +53,73 @@ class BackupService {
     );
   }
 
-  /// Writes the current local state before a destructive restore.
-  Future<String> createSafetyBackup() async {
+  /// Writes an encrypted copy of the current local state before a restore.
+  Future<String> createSafetyBackup(String pin) async {
     final directory = await getApplicationDocumentsDirectory();
     final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
     final file = File('${directory.path}/noor-safety-backup-$timestamp.json');
-    await file.writeAsString(const JsonEncoder.withIndent('  ').convert(_export()));
+    final encrypted = await BackupEncryption().encrypt(jsonEncode(_export()), pin);
+    await file.writeAsString(encrypted);
     return file.path;
   }
 
+  Future<bool> importFromPicker({required String safetyBackupPin}) async {
+    final source = await pickBackupSource();
+    if (source == null) return false;
+    await importJson(source, safetyBackupPin: safetyBackupPin);
+    return true;
+  }
 
-  Future<bool> importFromPicker() async {
+  Future<String?> pickBackupSource() async {
     final pickedFile = await FilePicker.pickFile(
       type: FileType.custom,
       allowedExtensions: const ['json'],
     );
     final path = pickedFile?.path;
-    if (path == null) {
-      return false;
-    }
-    await importJson(await File(path).readAsString());
-    return true;
+    return path == null ? null : File(path).readAsString();
   }
 
-  Future<void> importJson(String source) async {
+  bool isEncryptedBackup(String source) {
+    try {
+      final decoded = jsonDecode(source);
+      return decoded is Map<String, dynamic> &&
+          decoded['format'] == BackupEncryption.format;
+    } on FormatException {
+      return false;
+    }
+  }
+
+  Future<String> decryptBackup(String source, String pin) =>
+      BackupEncryption().decrypt(source, pin);
+
+  BackupPreview previewJson(String source) {
     final decoded = jsonDecode(source);
     if (decoded is! Map<String, dynamic>) {
       throw const FormatException('This is not a Noor backup file.');
     }
     if (decoded['schemaVersion'] != schemaVersion) {
       throw const FormatException('This backup version is not supported.');
+    }
+    return BackupPreview(
+      events: _maps(decoded['events'], 'events').length,
+      budgetItems: _maps(decoded['budgetItems'], 'budgetItems').length,
+      savingEntries: _maps(decoded['savingEntries'], 'savingEntries').length,
+      reminders: _maps(
+        decoded['reminderPreferences'],
+        'reminderPreferences',
+      ).length,
+      exportedAt: decoded['exportedAt'] as String?,
+    );
+  }
+
+  Future<void> importJson(
+    String source, {
+    required String safetyBackupPin,
+  }) async {
+    previewJson(source);
+    final decoded = jsonDecode(source);
+    if (decoded is! Map<String, dynamic>) {
+      throw const FormatException('This is not a Noor backup file.');
     }
     final events = _maps(decoded['events'], 'events');
     final budgetItems = _maps(decoded['budgetItems'], 'budgetItems');
@@ -105,7 +148,7 @@ class BackupService {
       );
     }
 
-    await createSafetyBackup();
+    await createSafetyBackup(safetyBackupPin);
     await _storage.replaceAll(
       events: {
         for (final item in parsedEvents) item.id: jsonEncode(item.toMap()),
@@ -135,6 +178,22 @@ class BackupService {
     'savingEntries': _allMaps(_storage.savingEntries.values),
     'reminderPreferences': _allMaps(_storage.reminderPreferences.values),
   };
+}
+
+class BackupPreview {
+  const BackupPreview({
+    required this.events,
+    required this.budgetItems,
+    required this.savingEntries,
+    required this.reminders,
+    this.exportedAt,
+  });
+
+  final int events;
+  final int budgetItems;
+  final int savingEntries;
+  final int reminders;
+  final String? exportedAt;
 }
 
 List<Map<String, dynamic>> _allMaps(Iterable<String> values) =>
