@@ -10,8 +10,12 @@ import '../../features/savings/data/hive_saving_repository.dart';
 import '../../features/savings/data/saving_repository.dart';
 import '../../features/settings/data/hive_settings_repository.dart';
 import '../../features/settings/data/settings_repository.dart';
+import '../../shared/models/app_settings.dart';
 import '../storage/hive_app_storage.dart';
 import '../services/date_service.dart';
+import '../services/backup_service.dart';
+import '../services/home_widget_service.dart';
+import '../services/hijri_sync_service.dart';
 import '../services/notification_service.dart';
 import '../services/reminder_coordinator.dart';
 
@@ -19,6 +23,9 @@ final appStorageProvider = Provider<HiveAppStorage>(
   (ref) => throw UnimplementedError(),
 );
 final dateServiceProvider = Provider<DateService>((ref) => DateService());
+final homeWidgetServiceProvider = Provider<HomeWidgetService>(
+  (ref) => HomeWidgetService(),
+);
 final notificationServiceProvider = Provider<NotificationService>(
   (ref) => NotificationService(),
 );
@@ -37,6 +44,18 @@ final reminderPreferenceRepositoryProvider =
     );
 final settingsRepositoryProvider = Provider<SettingsRepository>(
   (ref) => HiveSettingsRepository(ref.watch(appStorageProvider)),
+);
+final appSettingsProvider = FutureProvider<AppSettings>(
+  (ref) => ref.watch(settingsRepositoryProvider).get(),
+);
+final backupServiceProvider = Provider<BackupService>(
+  (ref) => BackupService(ref.watch(appStorageProvider)),
+);
+final hijriSyncServiceProvider = Provider<HijriSyncService>(
+  (ref) => HijriSyncService(
+    settingsRepository: ref.watch(settingsRepositoryProvider),
+    dateService: ref.watch(dateServiceProvider),
+  ),
 );
 final reminderCoordinatorProvider = Provider<ReminderCoordinator>(
   (ref) => ReminderCoordinator(

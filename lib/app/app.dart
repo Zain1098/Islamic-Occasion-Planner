@@ -1,11 +1,17 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:home_widget/home_widget.dart';
 
 import '../core/providers/repository_providers.dart';
 import '../core/services/notification_service.dart';
 import '../features/dashboard/presentation/dashboard_screen.dart';
+import '../features/dashboard/presentation/dashboard_provider.dart';
 import '../features/calendar/presentation/calendar_screen.dart';
 import '../features/events/presentation/events_screen.dart';
+import '../features/settings/presentation/settings_screen.dart';
+import '../shared/models/app_settings.dart';
 import 'theme/app_theme.dart';
 
 class IslamicOccasionPlannerApp extends ConsumerWidget {
@@ -13,11 +19,15 @@ class IslamicOccasionPlannerApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(appSettingsProvider);
     return MaterialApp(
       title: 'Islamic Occasion Planner',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
+      themeMode: settings.value == null
+          ? ThemeMode.system
+          : _themeModeFor(settings.value!.themeMode),
       home: const AppShell(),
     );
   }
@@ -34,6 +44,7 @@ class _AppShellState extends ConsumerState<AppShell> {
   int _selectedIndex = 0;
   late final VoidCallback _notificationListener;
   late final NotificationService _notifications;
+  StreamSubscription<Uri?>? _widgetClickSubscription;
 
   @override
   void initState() {
@@ -41,18 +52,59 @@ class _AppShellState extends ConsumerState<AppShell> {
     _notifications = ref.read(notificationServiceProvider);
     _notificationListener = () {
       if (_notifications.tappedEventId.value != null && mounted) {
-        _selectDestination(2);
+        _handleNotificationTap();
       }
     };
     _notifications.tappedEventId.addListener(_notificationListener);
+    _widgetClickSubscription = HomeWidget.widgetClicked.listen((_) {
+      if (mounted) _selectDestination(2);
+    });
     WidgetsBinding.instance.addPostFrameCallback(
-      (_) => _notificationListener(),
+      (_) async {
+        unawaited(_refreshSchedulesAfterHijriSync());
+        await _handleNotificationTap();
+        if (await HomeWidget.initiallyLaunchedFromHomeWidget() != null &&
+            mounted) {
+          _selectDestination(2);
+        }
+      },
     );
+  }
+
+  Future<void> _refreshSchedulesAfterHijriSync() async {
+    try {
+      final coordinator = ref.read(reminderCoordinatorProvider);
+      await coordinator.rescheduleAll();
+      final result = await ref
+          .read(hijriSyncServiceProvider)
+          .syncHijriDate(ref: ref);
+      if (result.success) await coordinator.rescheduleAll();
+    } catch (_) {
+      // A sync failure keeps existing local reminder schedules intact.
+    }
+  }
+
+  Future<void> _handleNotificationTap() async {
+    try {
+      final eventId = _notifications.tappedEventId.value;
+      if (eventId == null || !mounted) return;
+      _notifications.tappedEventId.value = null;
+      _selectDestination(2);
+      final event = await ref.read(eventRepositoryProvider).getById(eventId);
+      if (event != null && mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => EventDetailScreen(event: event),
+          ),
+        );
+      }
+    } catch (_) {}
   }
 
   @override
   void dispose() {
     _notifications.tappedEventId.removeListener(_notificationListener);
+    _widgetClickSubscription?.cancel();
     super.dispose();
   }
 
@@ -83,14 +135,19 @@ class _AppShellState extends ConsumerState<AppShell> {
 
   @override
   Widget build(BuildContext context) {
-    final destination = _destinations[_selectedIndex];
+    final dashboard = ref.watch(dashboardProvider);
+    dashboard.whenData((data) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(ref.read(homeWidgetServiceProvider).update(data));
+      });
+    });
     return Scaffold(
       body: SafeArea(
         child: switch (_selectedIndex) {
           0 => DashboardScreen(onViewPlans: () => _selectDestination(2)),
           1 => const CalendarScreen(),
           2 => const EventsScreen(),
-          _ => _ShellPage(title: destination.label),
+          _ => const SettingsScreen(),
         },
       ),
       bottomNavigationBar: NavigationBar(
@@ -109,51 +166,11 @@ class _AppShellState extends ConsumerState<AppShell> {
   }
 }
 
-class _ShellPage extends StatelessWidget {
-  const _ShellPage({required this.title});
-
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: textTheme.headlineMedium),
-          const SizedBox(height: 8),
-          Text(
-            '$title will be ready as the planner takes shape.',
-            style: textTheme.bodyLarge?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const Spacer(),
-          Center(
-            child: Icon(
-              Icons.construction_outlined,
-              size: 48,
-              color: colorScheme.primary,
-              semanticLabel: '$title in progress',
-            ),
-          ),
-          const SizedBox(height: 16),
-          Center(
-            child: Text(
-              'This section is part of a later V1 phase.',
-              textAlign: TextAlign.center,
-              style: textTheme.bodyMedium,
-            ),
-          ),
-          const Spacer(flex: 2),
-        ],
-      ),
-    );
-  }
-}
+ThemeMode _themeModeFor(AppThemePreference preference) => switch (preference) {
+  AppThemePreference.system => ThemeMode.system,
+  AppThemePreference.light => ThemeMode.light,
+  AppThemePreference.dark => ThemeMode.dark,
+};
 
 class _Destination {
   const _Destination({

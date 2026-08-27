@@ -53,10 +53,16 @@ class ReminderCoordinator {
       hijriAdjustmentDays: settings.hijriAdjustmentDays,
     );
     final remaining = await _remainingAmount(event.id);
+    // Use per-event time if explicitly customised, otherwise fall back to
+    // the global reminder time from app settings.
+    final effectiveTime = preference.reminderTimeMinutes != 540
+        ? preference.reminderTimeMinutes
+        : settings.reminderTimeMinutes;
     for (final reminder in buildReminderSchedules(
       event: event,
       eventDate: eventDate,
       offsetsInDays: preference.offsetsInDays,
+      reminderTimeMinutes: effectiveTime,
       remainingAmount: remaining,
     )) {
       await _notifications.schedule(
@@ -121,6 +127,7 @@ List<ReminderSchedule> buildReminderSchedules({
   required DateTime eventDate,
   required List<int> offsetsInDays,
   required int remainingAmount,
+  int reminderTimeMinutes = 540,
   DateTime? now,
 }) {
   final current = now ?? DateTime.now();
@@ -129,7 +136,7 @@ List<ReminderSchedule> buildReminderSchedules({
       .toSet()
       .map((offset) {
         final day = eventDate.subtract(Duration(days: offset));
-        final scheduledAt = DateTime(day.year, day.month, day.day, 9);
+        final scheduledAt = DateTime(day.year, day.month, day.day, reminderTimeMinutes ~/ 60, reminderTimeMinutes % 60);
         final lead = offset == 0
             ? 'today'
             : 'in $offset day${offset == 1 ? '' : 's'}';
